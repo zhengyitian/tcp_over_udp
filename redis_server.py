@@ -1,7 +1,7 @@
 import socket,select,json,base64
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-sock.bind(('127.0.0.1',9993))
+sock.bind(('0.0.0.0',9993))
 seqM = {}
 recLen = 1024*16
 import redis,random,time
