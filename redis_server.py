@@ -7,6 +7,7 @@ recLen = 1024*16
 import redis,random,time
 conn = redis.Redis(host='localhost', port=6379, db=0)
 def isTest():
+    return False
     s = random.randint(1,10)
     if s in [1,2,3]:
         return True
