@@ -1,16 +1,17 @@
 import socket,select,json,base64
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-sock.bind(('0.0.0.0',9993))
+sock.bind(('127.0.0.1',9993))
 seqM = {}
 recLen = 1024*16
-import redis,random
+import redis,random,time
 conn = redis.Redis(host='localhost', port=6379, db=0)
 def isTest():
     s = random.randint(1,10)
     if s in [1,2,3]:
         return True
     return False
+
 def re_set(k,s):
     global conn
     try:
@@ -19,9 +20,22 @@ def re_set(k,s):
         conn = redis.Redis(host='localhost', port=6379, db=0)
         conn.set(k,s)
         
+lastCheckTime = time.time()
+checkInterval = 100
+stayTime = 100
+def checkM():
+    global lastCheckTime,seqM
+    t = time.time()
+    if t-lastCheckTime<checkInterval:
+        return
+    lastCheckTime = t
+    for k,v in seqM.items():
+        if 'okTime' in v and v['okTime']+stayTime<t:
+            del seqM[k]
 while True :
     try:
         data, addr = sock.recvfrom(recLen)
+        checkM()
         m = json.loads(data)
         if isTest():
             raise Exception
@@ -51,6 +65,7 @@ while True :
             sock.sendto(json.dumps(re), addr)  
         continue
     seqM[seq]['ok']=1
+    seqM[seq]['okTime'] = time.time()
     ss = ''
     for i in range(size):
         ss += seqM[seq]['collect'][i]
