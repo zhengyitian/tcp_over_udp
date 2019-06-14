@@ -135,5 +135,5 @@ while True :
             send2(sock, ret, mysign, addr)                                
             continue
         ret = {'ret':1,'packNum':seqM[seq]['packNum'],'con':base64.b64encode(seqM[seq]['con'][pack])}
-        send2(sock, ret, mysign, addr)                       
+        send2(sock, ret, mysign, addr)                        
        
