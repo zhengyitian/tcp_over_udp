@@ -11,7 +11,7 @@ q2 = Queue.Queue()
 import re 
 waitTime = 0.7
 packLimit=700
-threadNum = 150
+threadNum = 30
 
 g_port = 9993
 g_ip = '144.202.17.72'    
@@ -198,7 +198,7 @@ def thr_func(myid):
     global g_task
 
     while True:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    
         mysign = random.randint(1,999)
         mysign = str(uuid.uuid1())
 
@@ -210,6 +210,8 @@ def thr_func(myid):
             if myid ==testId:
                 print time.time(),'sign2'            
             continue
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        
         #print 'sign1',myid,m['pack']
         ip = m['ip']
         port = m['port']    
