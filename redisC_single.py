@@ -11,7 +11,7 @@ waitTime = 0.7
 packLimit=700
 sockNum = 1000
 
-g_port = [9994,9994]
+g_port = [9993,9993]
 g_ip = '144.202.17.72'    
 #g_ip = '0.0.0.0'
     
@@ -24,6 +24,7 @@ minSleep = 0.01
 sockMap = {}
 taskMap = {}
 maxTask = 100
+
 def cut_text(text,lenth): 
     textArr = re3.findall('.{'+str(lenth)+'}', text) 
     textArr.append(text[(len(textArr)*lenth):]) 
@@ -40,6 +41,7 @@ class task_g():
         self.co = 0
         self.speed = 0
         self.markTime = time.time()
+
     def getPri(self,ti):
         t = time.time()
         return int ((t-ti)/0.3)
@@ -52,7 +54,6 @@ class task_g():
         self.m[id]=con
         return id
 
- 
     def getTaskMinLoad(self,taskId):
         global taskMap
         minLoad = workLimit+1
@@ -99,8 +100,8 @@ class task_g():
         ret = copy.deepcopy(v)
         self.m[pick]['workCount'] = self.m[pick]['workCount']+1
         self.refreshTask(v['taskId'])
-       
-        return ret     
+            
+        return ret    
             
     def findTaskId(self,id):
         global taskMap
@@ -112,19 +113,24 @@ class task_g():
         for one in taskMap[taskId]['ids']:
             if self.m[one]['status'] == 0:
                 minLoadList.append(self.m[one]['workCount'])
-        taskMap[taskId]['minLoad'] = min(minLoadList)        
-    def deal_timeout(self,m):
+        taskMap[taskId]['minLoad'] = min(minLoadList)    
+        return min(minLoadList)
+
+    def deal_timeout(self,s,m):
         k = m['id']
         if k not in self.m:
+            assert m['taskId'] not in taskMap
             return        
         self.m[k]['workCount'] = self.m[k]['workCount']-1   
         taskId = self.findTaskId(k)
-        self.refreshTask(taskId)
-        
+        rr = self.refreshTask(taskId)
+      
+            
     def deal_get_back(self,m,j):
         global taskMap
         k = m['id']
         if k not in self.m:
+            assert m['taskId'] not in taskMap
             return
         self.m[k]['workCount'] = self.m[k]['workCount']-1   
         self.m[k]['status'] = 1
@@ -138,10 +144,12 @@ class task_g():
         if packNum > ll:
             for i in range(packNum-ll):
                 con = {}
-                for sss in ['key','ip','port','opt','seq']:
+                for sss in ['key','ip','port','opt','seq','taskId']:
                     con[sss] = m[sss]
-                con['pack'] = packNum-1-i          
-                g_task.add(con)       
+                con['pack'] = packNum-1-i
+                id = g_task.add(con)    
+                taskMap[taskId]['ids'].append(id)
+            self.refreshTask(taskId)
         elif packNum<ll:
             tempL = []
             for i in range(ll-packNum):
@@ -206,7 +214,7 @@ class task_g():
         else:
             self.refreshTask(taskId)
 
-    def deal_back(self,m,back):
+    def deal_back(self,s,m,back):
         opt = m['opt']
         if opt == 'set':
             return self.deal_set_back(m, back)
@@ -235,8 +243,9 @@ def assign_task(m):
     sockMap[s] = {}
     sockMap[s]['createTime'] = time.time()
     sockMap[s]['con'] = m
+    sockMap[s]['num'] = len(sockMap)
     s.sendto(ra, (ip, port))
-  
+    return s
 def splitTask(taskId):
     global taskMap
     taskMap[taskId]['createTime'] = time.time()
@@ -264,7 +273,11 @@ def getTask():
     while len(taskMap)<maxTask:
         taskId = str(uuid.uuid1())
         taskMap[taskId] = {}
-        taskMap[taskId]['command'] = ['get','a',50]
+        if random.randint(1,2)==1:
+            taskMap[taskId]['command'] = ['set','a',str(random.randint(1,10))*10019]
+        else:
+            taskMap[taskId]['command'] = ['get','a',int(10000/10000)]
+            
         splitTask(taskId)
         
 def deal_sock(l):
@@ -275,6 +288,7 @@ def deal_sock(l):
         try:
             j = json.loads(s.recv(recLen))   
         except:
+            g_task.deal_timeout(s,m)
             del sockMap[s]
             s.close() 
             print 'error2'
@@ -282,20 +296,20 @@ def deal_sock(l):
         if j['mysign'] != mysign:
             print 'colli'
             return
-        g_task.deal_back(m,j)
+        g_task.deal_back(s,m,j)
         del sockMap[s]
         s.close()    
 
 def deal_timeout_socks():
     global sockMap
+    #print 'len sockMap',len(sockMap)
     for s,v in sockMap.items():
         ti = v['createTime']
         if time.time()-ti>waitTime:
             m = v['con']
-            g_task.deal_timeout(m)   
+            g_task.deal_timeout(s,m)   
             del sockMap[s]
             s.close()    
-
 def main(myid):
     global g_task,sockMap
     while True:
@@ -305,7 +319,7 @@ def main(myid):
             m = g_task.pickTask()
             if m == None:
                 break
-            assign_task(m)
+            s = assign_task(m)
         whatReady = select.select(sockMap.keys(), [], [],0.01)   
         if whatReady[0] != []:
             deal_sock(whatReady[0])
