@@ -165,28 +165,24 @@ class udpSR():
         self.maxRec = 0
         self.clearPos = 0
         self.hasRecPos = 0
-        
-        self.conn_uuid = ''
-        self.wirteUuid = ''
-        self.wirteKeyBase = ''
-        self.writeCircle = 0  # 0 ir 1
-        self.writeCircle_peer = 0
-        self.writeCircleLen = 0
-        self.writePos = 0
-        self.writePos_peer = 0
+        self.nextToSendPos = 0
+        self.hasGot = {}
+        self.hasSend = {}
+        self.buff = {}
+        self.maxPos = 0
+        self.taskIds = {}
+        self.isSending = {}
+        self.readKeyBase = ''
+        self.readStatusKey = ''
         self.statusKey = ''
         self.close = False
         self.writeTaskIds = {}
         self.peerPos = 0
+        self.sendStatusKey = ''
+        self.packSize = {}
         
-    def isSending(self):
-        pass
-    def hasGot(self):
-        pass
-    def clearBuffer(self):
-        pass
-    def getPeerStatus(self):
-        pass
+
+
     def sendStatus(self):
         pass
     @gen.coroutine    
@@ -195,42 +191,118 @@ class udpSR():
         while self.stall():
             self.work()
             yield gen.sleep(miniSleep)
-        
         ret = self.clearBuffer()
-        for i in range(self.clearPos,self.clearPos+self.readAhead):
-            if not self.isSending(i) and not self.hasGot(i):
-                g_manager.add(['get','xxoo',1])
-            self.getPeerStatus()
-            self.sendStatus()
-        
+        m = {'id':str(uuid.uuid1()),'nextToSendPos':self.nextToSendPos}
+        task = ['set',self.sendStatusKey,json.dumps(m)]
+        id = yield g_manager.add(task)     
+        self.taskIds[id] = {'type':'setStatus'}
+    def makeRange1(self,a,b):
+        l = []
+        if maxPack<self.nextToSendPos:
+            l = range(self.nextToSendPos,self.maxPos+1)+ range(maxPack+1)
+        if maxPack == self.nextToSendPos:
+            l = [maxPack]
+        if maxPack > self.nextToSendPos:
+            l = range(self.nextToSendPos,maxPack+1)        
+        pass
+    def makeRange2(self,a,l):
+        pass    
+    def circleBig(self,a,b):
+        pass
+    
+    def circleMax(self,l):
+        pass
+    def circleAdd(self,a,b):
+        pass
+    def clearBuffer(self):
+        ss = ''
+        while True:
+            if self.nextToSendPos not in self.hasGot:
+                break
+            ss += self.buff[self.nextToSendPos]
+            del self.buff[self.nextToSendPos]
+            del self.hasGot[self.nextToSendPos]
+            del self.hasSend[self.nextToSendPos]
+            if self.nextToSendPos == self.maxPos:
+                self.nextToSendPos = 0
+            else:
+                self.nextToSendPos += 1
+        return ss
+
     def stall(self):
         if self.close:
             return
-        if self.writePos == self.writeCircleLen-1 and self.writeCircle!=self.writeCircle_peer:
+        if self.nextToSendPos in self.hasGot:
             return True
+
     def work(self):
-        if get_stauts:
-            for i in range(self.hasRecPos,self.peerPos+10):
-                g_manager.add(['get','xxoo',1])
-            self.getPeerStatus()
-            self.sendStatus()
-        if rec_get:
-            if aheadPac_just_send:
-                pass
-            pass
-        keys = self.writeTaskIds.keys()
+        pack_to_send = []
+        keys = self.taskIds.keys()
         for k in keys:
             if k in g_manager.outputMap:
                 r = g_manager.get(k)
-                del self.writeTaskIds[k]
-                if r == None:
-                    return
-                m = json.loads(r)
-                if m['close'] == 1:
-                    self.close = True
-                    return
-                self.writeCircle_peer = m['writeCircle_peer']
-                self.writePos_peer = m['writePos_peer']
+                con = self.taskIds[k]
+                if con['type']=='readPack':
+                    pack = con['pack']
+                    del self.isSending[pack]
+                    if r:
+                        self.hasGot[pack] = 1
+                        self.buff[pack] = r         
+        keys = self.taskIds.keys()
+        for k in keys:
+            if k in g_manager.outputMap:
+                r = g_manager.get(k)
+                con = self.taskIds[k]                        
+                if con['type']=='readStatus':
+                    if con['close'] == 1:
+                        self.deal_close()
+                        return
+                    maxPack = con['maxPack']
+                    yourPos = con['yourPos']
+                    size = con['size']
+                    l = self.makeRange1(yourPos,maxPack)
+                    for i in l:
+                        self.packSize[i] = size[i]
+                    if self.circleBig(maxPack,self.peerPos):
+                        self.peerPos = maxPack
+        b = self.circleMax(self.hasGot)
+        ma = b
+        if self.circleBig(self.peerPos,b):
+            ma = self.peerPos
+        l = self.makeRange1(self.nextToSendPos,ma)
+        
+        for one in l:
+            if one not in self.isSending and one not in pack_to_send:
+                pack_to_send.append(one)
+        l = self.makeRange2(ma,self.readAhead)
+        for one in l:
+            if one not in self.hasSend and one not in pack_to_send:
+                pack_to_send.append(one)
+            
+        for one in pack_to_send:
+            self.sendAll(one)
+          
+            
+        if not pack_to_send and not self.isSending:
+            st = self.nextToSendPos
+            co = 0
+            ll = []
+            while co<self.readAhead:
+                if st not in self.hasGot:
+                    co +=1
+                    self.sendAll(st)
+                    st = self.circleAdd(st,1)
+                
+                 
+    def sendAll(self,pack):
+        task = ['get',self.readKeyBase+str(one),self.packSize[one]]
+        id = yield g_manager.add(task)
+        self.taskIds[id] = {'type':'readPack','pack':one}
+        self.isSending[one] = 1
+        self.hasSend[one] = 1
+        task = ['get',self.readStatusKey,2]
+        id = yield g_manager.add(task)
+        self.taskIds[id] = {'type':'readStatus'}
     def deal_close(self):
         pass
 
