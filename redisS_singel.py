@@ -54,7 +54,7 @@ class reServer():
         self.lastCheckTime = time.time()
         self.seqM = {}
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.sock.bind(('127.0.0.1',port))  
+        self.sock.bind(('0.0.0.0',port))  
         
     def checkM(self):
         t = time.time()
