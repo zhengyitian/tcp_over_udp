@@ -1,19 +1,17 @@
-import threading
-import Queue,time
+import time
 import base64,copy
 import json,uuid
 import random,os,sys
 import socket,select
 import re as re3
-import redis
 
 waitTime = 0.7
 packLimit=700
 sockNum = 1000
 
-g_port = [9993,9993]
+g_port = [9993,10092]
 g_ip = '144.202.17.72'    
-#g_ip = '0.0.0.0'
+#g_ip = '127.0.0.1'
     
 workLimit = 3
 recLen = 16*1024
@@ -226,7 +224,8 @@ def assign_task(m):
     global sockMap
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     ip = m['ip']
-    port = m['port']    
+    port = m['port']  
+    port = get_port()
     opt = m['opt']
     mysign = str(uuid.uuid1())
     if opt == 'set':
@@ -244,7 +243,9 @@ def assign_task(m):
     sockMap[s]['createTime'] = time.time()
     sockMap[s]['con'] = m
     sockMap[s]['num'] = len(sockMap)
+    
     s.sendto(ra, (ip, port))
+    #print time.time(),'sockNum',len(sockMap)
     return s
 def splitTask(taskId):
     global taskMap
@@ -268,15 +269,24 @@ def splitTask(taskId):
             taskMap[taskId]['ids'].append(id)
         
                 
+lastAddTime = time.time()
 def getTask():
-    global taskMap
-    while len(taskMap)<maxTask:
+    global taskMap,lastAddTime
+    if time.time()-lastAddTime<1:
+        pass
+        #return
+    lastAddTime = time.time()
+    co = 0
+    limit = random.randint(1,10)
+    limit = maxTask
+    while len(taskMap)<maxTask and co <limit:
+        co += 1
         taskId = str(uuid.uuid1())
         taskMap[taskId] = {}
         if random.randint(1,2)==1:
-            taskMap[taskId]['command'] = ['set','a',str(random.randint(1,10))*10019]
+            taskMap[taskId]['command'] = ['set','a',str(random.randint(1,9))*10000]
         else:
-            taskMap[taskId]['command'] = ['get','a',int(10000/10000)]
+            taskMap[taskId]['command'] = ['get','a',int(10000/packLimit)+1]
             
         splitTask(taskId)
         
@@ -313,14 +323,13 @@ def deal_timeout_socks():
 def main(myid):
     global g_task,sockMap
     while True:
-        if myid ==testId:
-            print time.time(),'sign1'
+        time.sleep(0.01)
         while len(sockMap)<sockNum:
             m = g_task.pickTask()
             if m == None:
                 break
             s = assign_task(m)
-        whatReady = select.select(sockMap.keys(), [], [],0.01)   
+        whatReady = select.select(sockMap.keys(), [], [],0)   
         if whatReady[0] != []:
             deal_sock(whatReady[0])
         deal_timeout_socks()
